@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install flask --break-system-packages
+RUN pip3 install flask requests --break-system-packages
 
 WORKDIR /app
 
@@ -20,7 +20,8 @@ COPY tools /tools
 RUN chmod +x /tools/*.sh
 
 ENV ORIGINALS_ROOT=/photoprism/originals \
-    BACKUP_DIR=/photoprism/originals/.photoprism-tools-backup
+    BACKUP_DIR=/photoprism/originals/.photoprism-tools-backup \
+    PHOTOPRISM_URL=http://localhost:2342
 
 EXPOSE 8088
 

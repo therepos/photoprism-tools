@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PhotoPrism Tools</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f0f0f;
+    --surface: #1a1a1a;
+    --surface2: #242424;
+    --border: #2e2e2e;
+    --text: #e2e8f0;
+    --muted: #888;
+    --accent: #a78bfa;
+    --accent-dim: #7c5cbf;
+    --green: #4ade80;
+    --red: #f87171;
+    --amber: #fbbf24;
+    --cyan: #38bdf8;
+    --radius: 10px;
+  }
+
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; display: flex; height: 100vh; overflow: hidden; }
+
+  /* Sidebar */
+  aside { width: 220px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+  .sidebar-header { padding: 20px 16px 12px; border-bottom: 1px solid var(--border); }
+  .sidebar-header h1 { font-size: 15px; font-weight: 600; color: var(--text); }
+  .sidebar-header p  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  nav { padding: 12px 8px; flex: 1; }
+  .nav-section { font-size: 10px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; padding: 8px 8px 4px; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 7px; cursor: pointer; color: var(--muted); transition: background 0.15s, color 0.15s; margin-bottom: 2px; border: none; background: none; width: 100%; text-align: left; font-size: 13px; }
+  .nav-item:hover { background: var(--surface2); color: var(--text); }
+  .nav-item.active { background: var(--surface2); color: var(--accent); }
+  .nav-icon { width: 18px; height: 18px; flex-shrink: 0; }
+
+  /* Main */
+  main { flex: 1; overflow-y: auto; padding: 28px; }
+  .page { display: none; }
+  .page.active { display: block; }
+  h2 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+
+  /* Cards */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+  .card-title { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; }
+
+  /* Form */
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .folder-input { display: flex; gap: 8px; }
+  input[type=text] { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 9px 12px; color: var(--text); font-size: 13px; outline: none; }
+  input[type=text]:focus { border-color: var(--accent); }
+  .btn { padding: 9px 18px; border-radius: 7px; border: none; font-size: 13px; font-weight: 500; cursor: pointer; transition: opacity 0.15s; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: var(--accent-dim); }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .btn-danger { background: #7f1d1d; color: var(--red); }
+  .btn-danger:hover:not(:disabled) { background: #991b1b; }
+  .btn-success { background: #14532d; color: var(--green); }
+  .btn-success:hover:not(:disabled) { background: #166534; }
+
+  /* Progress */
+  .progress-wrap { margin-top: 8px; }
+  .progress-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 5px; }
+  .progress-track { background: var(--surface2); border-radius: 3px; height: 5px; overflow: hidden; }
+  .progress-fill { height: 5px; border-radius: 3px; background: var(--accent); transition: width 0.2s; }
+  .activity { font-size: 12px; color: var(--cyan); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 18px; }
+
+  /* Log */
+  .log { background: #0a0a0a; border: 1px solid var(--border); border-radius: 7px; padding: 12px; font-family: monospace; font-size: 12px; line-height: 1.8; max-height: 240px; overflow-y: auto; margin-top: 12px; }
+  .log-line { color: var(--muted); }
+  .log-line.ok  { color: var(--green); }
+  .log-line.err { color: var(--red); }
+  .log-line.warn { color: var(--amber); }
+
+  /* Summary / confirm */
+  .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+  .stat-card { background: var(--surface2); border-radius: 8px; padding: 14px; text-align: center; }
+  .stat-n { font-size: 26px; font-weight: 600; display: block; }
+  .stat-l { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .confirm-box { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .confirm-box p { margin-bottom: 14px; line-height: 1.6; color: var(--muted); font-size: 13px; }
+  .confirm-box strong { color: var(--text); }
+  .confirm-actions { display: flex; gap: 10px; }
+
+  /* Upload */
+  .drop-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 40px 20px; text-align: center; cursor: pointer; transition: border-color 0.2s; }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); }
+  .drop-zone p { color: var(--muted); font-size: 13px; margin-top: 8px; }
+  .drop-icon { font-size: 32px; }
+  #file-input { display: none; }
+  .file-list { margin-top: 12px; }
+  .file-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: var(--surface2); border-radius: 6px; margin-bottom: 6px; font-size: 12px; }
+  .file-item-name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70%; }
+  .file-item-size { color: var(--muted); }
+  .file-item-status { font-size: 11px; }
+  .upload-progress { margin-top: 12px; }
+
+  /* Folder picker dropdown */
+  .folder-dropdown { position: absolute; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; z-index: 100; width: 340px; max-height: 220px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .folder-dropdown-item { padding: 9px 14px; cursor: pointer; font-size: 13px; color: var(--muted); }
+  .folder-dropdown-item:hover { background: var(--surface2); color: var(--text); }
+  .folder-input-wrap { position: relative; }
+</style>
+</head>
+<body>
+
+<aside>
+  <div class="sidebar-header">
+    <h1>PhotoPrism Tools</h1>
+    <p>Manage your photo library</p>
+  </div>
+  <nav>
+    <div class="nav-section">Tools</div>
+    <button class="nav-item active" onclick="showPage('livephoto')">
+      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/></svg>
+      Live Photo Convert
+    </button>
+    <button class="nav-item" onclick="showPage('upload')">
+      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+      Upload Photos
+    </button>
+  </nav>
+</aside>
+
+<main>
+
+  <!-- ── Live Photo Convert ── -->
+  <div class="page active" id="page-livephoto">
+    <h2>Live Photo Convert</h2>
+    <p class="subtitle">Convert Samsung Motion Photos and Apple Live Photos to still images.</p>
+
+    <div class="card">
+      <div class="card-title">Configuration</div>
+      <div style="margin-bottom:14px;">
+        <label>Source folder</label>
+        <div class="folder-input-wrap">
+          <div class="folder-input">
+            <input type="text" id="lp-photos-dir" value="/photoprism/originals" placeholder="/photoprism/originals/chiult">
+            <button class="btn btn-secondary" onclick="browseFolders('lp-photos-dir')">Browse</button>
+          </div>
+          <div class="folder-dropdown" id="lp-photos-dir-dropdown" style="display:none;"></div>
+        </div>
+      </div>
+      <div>
+        <label>Backup folder <span style="color:var(--muted);font-size:11px;">(zip saved here before converting)</span></label>
+        <div class="folder-input">
+          <input type="text" id="lp-backup-dir" value="/photoprism/originals/.photoprism-tools-backup">
+        </div>
+      </div>
+    </div>
+
+    <div id="lp-run-section">
+      <button class="btn btn-primary" id="lp-run-btn" onclick="runLivePhoto()">Run conversion</button>
+    </div>
+
+    <div id="lp-progress-section" style="display:none;">
+      <div class="card">
+        <div class="card-title">Progress</div>
+        <div class="progress-wrap">
+          <div class="progress-labels">
+            <span id="lp-progress-label">Scanning...</span>
+            <span id="lp-progress-pct">0%</span>
+          </div>
+          <div class="progress-track"><div class="progress-fill" id="lp-bar" style="width:0%"></div></div>
+          <div class="activity" id="lp-activity"></div>
+        </div>
+        <div class="log" id="lp-log"></div>
+      </div>
+    </div>
+
+    <div id="lp-confirm-section" style="display:none;">
+      <div class="card">
+        <div class="card-title">Results</div>
+        <div class="summary-grid">
+          <div class="stat-card"><span class="stat-n" id="lp-stat-samsung" style="color:var(--cyan)">0</span><div class="stat-l">Samsung converted</div></div>
+          <div class="stat-card"><span class="stat-n" id="lp-stat-apple" style="color:var(--accent)">0</span><div class="stat-l">Apple converted</div></div>
+          <div class="stat-card"><span class="stat-n" id="lp-stat-failed" style="color:var(--red)">0</span><div class="stat-l">Failed</div></div>
+        </div>
+        <div class="confirm-box">
+          <p>Conversion complete. A backup zip was saved at:<br><strong id="lp-backup-path"></strong><br><br>Are you happy with the results? You can delete the backup now or keep it for safety.</p>
+          <div class="confirm-actions">
+            <button class="btn btn-danger" id="lp-delete-btn" onclick="deleteBackup()">Delete backup</button>
+            <button class="btn btn-success" onclick="keepBackup()">Keep backup</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Upload Photos ── -->
+  <div class="page" id="page-upload">
+    <h2>Upload Photos</h2>
+    <p class="subtitle">Upload photos directly to your PhotoPrism originals folder.</p>
+
+    <div class="card">
+      <div class="card-title">Target folder</div>
+      <div class="folder-input-wrap">
+        <div class="folder-input">
+          <input type="text" id="ul-target-dir" value="/photoprism/originals" placeholder="/photoprism/originals/chiult">
+          <button class="btn btn-secondary" onclick="browseFolders('ul-target-dir')">Browse</button>
+        </div>
+        <div class="folder-dropdown" id="ul-target-dir-dropdown" style="display:none;"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Files</div>
+      <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+        <div class="drop-icon">📁</div>
+        <p>Tap to select photos, or drag and drop here</p>
+        <p style="font-size:11px;margin-top:4px;">JPEG, HEIC, PNG, MOV, MP4 supported</p>
+      </div>
+      <input type="file" id="file-input" multiple accept="image/*,video/*" onchange="handleFiles(this.files)">
+      <div class="file-list" id="file-list"></div>
+    </div>
+
+    <div id="ul-actions" style="display:none;">
+      <button class="btn btn-primary" id="ul-upload-btn" onclick="startUpload()">Upload</button>
+    </div>
+
+    <div id="ul-progress-section" style="display:none; margin-top:16px;">
+      <div class="card">
+        <div class="card-title">Uploading</div>
+        <div class="progress-wrap">
+          <div class="progress-labels">
+            <span id="ul-progress-label">0 of 0</span>
+            <span id="ul-progress-pct">0%</span>
+          </div>
+          <div class="progress-track"><div class="progress-fill" id="ul-bar" style="width:0%"></div></div>
+          <div class="activity" id="ul-activity"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ── Navigation ────────────────────────────────────────────────────────────────
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  event.currentTarget.classList.add('active');
+}
+
+// ── Folder browser ────────────────────────────────────────────────────────────
+async function browseFolders(inputId) {
+  const input = document.getElementById(inputId);
+  const dropdown = document.getElementById(inputId + '-dropdown');
+  const path = input.value || '/photoprism/originals';
+
+  const res = await fetch('/api/folders?path=' + encodeURIComponent(path));
+  const data = await res.json();
+
+  dropdown.innerHTML = '';
+  if (data.folders && data.folders.length > 0) {
+    data.folders.forEach(f => {
+      const item = document.createElement('div');
+      item.className = 'folder-dropdown-item';
+      item.textContent = f.name;
+      item.onclick = () => { input.value = f.path; dropdown.style.display = 'none'; };
+      dropdown.appendChild(item);
+    });
+  } else {
+    dropdown.innerHTML = '<div class="folder-dropdown-item" style="color:var(--muted)">No subfolders</div>';
+  }
+
+  dropdown.style.display = 'block';
+  document.addEventListener('click', function hide(e) {
+    if (!dropdown.contains(e.target) && e.target !== input) {
+      dropdown.style.display = 'none';
+      document.removeEventListener('click', hide);
+    }
+  });
+}
+
+// ── Live Photo Convert ────────────────────────────────────────────────────────
+let backupZipPath = '';
+
+function addLog(msg, cls = '') {
+  const log = document.getElementById('lp-log');
+  const line = document.createElement('div');
+  line.className = 'log-line ' + cls;
+  line.textContent = msg;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+function runLivePhoto() {
+  const photosDir = document.getElementById('lp-photos-dir').value.trim();
+  const backupDir = document.getElementById('lp-backup-dir').value.trim();
+
+  document.getElementById('lp-run-section').style.display = 'none';
+  document.getElementById('lp-progress-section').style.display = 'block';
+  document.getElementById('lp-confirm-section').style.display = 'none';
+
+  const url = `/api/livephoto/run?photos_dir=${encodeURIComponent(photosDir)}&backup_dir=${encodeURIComponent(backupDir)}`;
+  const es = new EventSource(url);
+
+  es.onmessage = (e) => {
+    let data;
+    try { data = JSON.parse(e.data); } catch { addLog(e.data); return; }
+
+    if (data.type === 'progress') {
+      document.getElementById('lp-bar').style.width = data.pct + '%';
+      document.getElementById('lp-progress-pct').textContent = data.pct + '%';
+      document.getElementById('lp-progress-label').textContent = `${data.current} / ${data.total}`;
+      document.getElementById('lp-activity').textContent = data.activity;
+
+    } else if (data.type === 'log') {
+      const cls = data.msg.startsWith('ERROR') ? 'err' : data.msg.startsWith('WARN') ? 'warn' : 'ok';
+      addLog(data.msg, cls);
+
+    } else if (data.type === 'error') {
+      addLog(data.msg, 'err');
+      es.close();
+
+    } else if (data.type === 'confirm_backup') {
+      es.close();
+      backupZipPath = data.backup_zip;
+      document.getElementById('lp-bar').style.width = '100%';
+      document.getElementById('lp-progress-pct').textContent = '100%';
+      document.getElementById('lp-activity').textContent = 'Done';
+
+      document.getElementById('lp-stat-samsung').textContent = data.samsung;
+      document.getElementById('lp-stat-apple').textContent = data.apple;
+      document.getElementById('lp-stat-failed').textContent = data.failed;
+      document.getElementById('lp-backup-path').textContent = data.backup_zip;
+      document.getElementById('lp-confirm-section').style.display = 'block';
+    }
+  };
+
+  es.onerror = () => { addLog('Connection error', 'err'); es.close(); };
+}
+
+async function deleteBackup() {
+  document.getElementById('lp-delete-btn').disabled = true;
+  const res = await fetch('/api/livephoto/delete-backup', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({backup_zip: backupZipPath})
+  });
+  const data = await res.json();
+  if (data.ok) {
+    document.getElementById('lp-confirm-section').innerHTML = '<div class="card"><p style="color:var(--green);padding:12px 0;">✓ Backup deleted. All done!</p><button class="btn btn-secondary" style="margin-top:12px;" onclick="resetLivePhoto()">Run again</button></div>';
+  }
+}
+
+function keepBackup() {
+  document.getElementById('lp-confirm-section').innerHTML = '<div class="card"><p style="color:var(--green);padding:12px 0;">✓ Backup kept at ' + backupZipPath + '</p><button class="btn btn-secondary" style="margin-top:12px;" onclick="resetLivePhoto()">Run again</button></div>';
+}
+
+function resetLivePhoto() {
+  document.getElementById('lp-run-section').style.display = 'block';
+  document.getElementById('lp-progress-section').style.display = 'none';
+  document.getElementById('lp-confirm-section').style.display = 'none';
+  document.getElementById('lp-log').innerHTML = '';
+  document.getElementById('lp-bar').style.width = '0%';
+  backupZipPath = '';
+}
+
+// ── Upload ────────────────────────────────────────────────────────────────────
+let filesToUpload = [];
+
+function handleFiles(files) {
+  filesToUpload = Array.from(files);
+  const list = document.getElementById('file-list');
+  list.innerHTML = '';
+  filesToUpload.forEach(f => {
+    const item = document.createElement('div');
+    item.className = 'file-item';
+    item.id = 'file-' + f.name.replace(/[^a-z0-9]/gi, '_');
+    item.innerHTML = `<span class="file-item-name">${f.name}</span><span class="file-item-size">${(f.size/1024/1024).toFixed(1)} MB</span><span class="file-item-status" style="color:var(--muted)">waiting</span>`;
+    list.appendChild(item);
+  });
+  document.getElementById('ul-actions').style.display = filesToUpload.length > 0 ? 'block' : 'none';
+}
+
+// Drag and drop
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
+
+async function startUpload() {
+  const targetDir = document.getElementById('ul-target-dir').value.trim();
+  document.getElementById('ul-upload-btn').disabled = true;
+  document.getElementById('ul-progress-section').style.display = 'block';
+
+  let done = 0;
+  for (const file of filesToUpload) {
+    const itemId = 'file-' + file.name.replace(/[^a-z0-9]/gi, '_');
+    document.getElementById('ul-activity').textContent = 'Uploading ' + file.name;
+
+    const fd = new FormData();
+    fd.append('target_dir', targetDir);
+    fd.append('files', file);
+
+    try {
+      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      const el = document.getElementById(itemId);
+      if (el) {
+        if (data.errors && data.errors.length > 0) {
+          el.querySelector('.file-item-status').textContent = 'failed';
+          el.querySelector('.file-item-status').style.color = 'var(--red)';
+        } else {
+          el.querySelector('.file-item-status').textContent = 'done';
+          el.querySelector('.file-item-status').style.color = 'var(--green)';
+        }
+      }
+    } catch {
+      const el = document.getElementById(itemId);
+      if (el) { el.querySelector('.file-item-status').textContent = 'error'; el.querySelector('.file-item-status').style.color = 'var(--red)'; }
+    }
+
+    done++;
+    const pct = Math.round(done / filesToUpload.length * 100);
+    document.getElementById('ul-bar').style.width = pct + '%';
+    document.getElementById('ul-progress-pct').textContent = pct + '%';
+    document.getElementById('ul-progress-label').textContent = `${done} of ${filesToUpload.length}`;
+  }
+
+  document.getElementById('ul-activity').textContent = 'Upload complete';
+  document.getElementById('ul-upload-btn').disabled = false;
+}
+</script>
+</body>
+</html>

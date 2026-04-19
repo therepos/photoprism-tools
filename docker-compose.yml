@@ -1,0 +1,11 @@
+  photoprism-tools:
+    image: ghcr.io/therepos/photoprism-tools:latest
+    container_name: photoprism-tools
+    restart: unless-stopped
+    ports:
+      - "8088:8088"
+    volumes:
+      - "/mnt/sec/media/photos:/photoprism/originals"
+    environment:
+      ORIGINALS_ROOT: "/photoprism/originals"
+      BACKUP_DIR: "/photoprism/originals/.photoprism-tools-backup"

@@ -225,6 +225,7 @@
         <div class="summary-grid">
           <div class="stat-card"><span class="stat-n" id="lp-stat-samsung" style="color:var(--cyan)">0</span><div class="stat-l">Samsung converted</div></div>
           <div class="stat-card"><span class="stat-n" id="lp-stat-apple" style="color:var(--accent)">0</span><div class="stat-l">Apple converted</div></div>
+          <div class="stat-card"><span class="stat-n" id="lp-stat-verified" style="color:var(--green)">0</span><div class="stat-l">Verified</div></div>
           <div class="stat-card"><span class="stat-n" id="lp-stat-failed" style="color:var(--red)">0</span><div class="stat-l">Failed</div></div>
         </div>
         <div class="confirm-box">
@@ -454,6 +455,13 @@ function runLivePhoto() {
   const url = `/api/livephoto/run?photos_dir=${encodeURIComponent(photosDir)}&backup_dir=${encodeURIComponent(backupDir)}`;
   const es = new EventSource(url);
 
+  // If no reindex event arrives within 15s of confirm_backup, close anyway.
+  let reindexTimer = null;
+  const closeStream = () => {
+    if (reindexTimer) { clearTimeout(reindexTimer); reindexTimer = null; }
+    es.close();
+  };
+
   es.onmessage = (e) => {
     let data;
     try { data = JSON.parse(e.data); } catch { addLog(e.data); return; }
@@ -470,10 +478,9 @@ function runLivePhoto() {
 
     } else if (data.type === 'error') {
       addLog(data.msg, 'err');
-      es.close();
+      closeStream();
 
     } else if (data.type === 'confirm_backup') {
-      es.close();
       backupZipPath = data.backup_zip;
       document.getElementById('lp-bar').style.width = '100%';
       document.getElementById('lp-progress-pct').textContent = '100%';
@@ -481,9 +488,26 @@ function runLivePhoto() {
 
       document.getElementById('lp-stat-samsung').textContent = data.samsung;
       document.getElementById('lp-stat-apple').textContent = data.apple;
+      document.getElementById('lp-stat-verified').textContent = (data.verified !== undefined ? data.verified : data.converted);
       document.getElementById('lp-stat-failed').textContent = data.failed;
-      document.getElementById('lp-backup-path').textContent = data.backup_zip;
+      document.getElementById('lp-backup-path').textContent = data.backup_zip || '(no files to back up)';
       document.getElementById('lp-confirm-section').style.display = 'block';
+
+      // If nothing was converted, there won't be a reindex event — close now.
+      if (!data.converted || data.converted === 0) {
+        closeStream();
+      } else {
+        // Wait up to 15s for the reindex event from the server.
+        reindexTimer = setTimeout(closeStream, 15000);
+      }
+
+    } else if (data.type === 'reindex') {
+      if (data.ok) {
+        addLog('✓ PhotoPrism re-index started — refresh PhotoPrism in a moment to see updated file types.', 'ok');
+      } else {
+        addLog('⚠ Re-index failed: ' + (data.error || 'unknown') + '. Trigger it manually in PhotoPrism → Library → Index.', 'warn');
+      }
+      closeStream();
     }
   };
 
@@ -491,7 +515,7 @@ function runLivePhoto() {
     if (document.getElementById('lp-confirm-section').style.display === 'none') {
       addLog('Connection lost — stream ended unexpectedly', 'err');
     }
-    es.close();
+    closeStream();
   };
 }
 

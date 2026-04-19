@@ -2,7 +2,6 @@
 import os
 import json
 import subprocess
-import threading
 import shutil
 import secrets
 import time
@@ -27,10 +26,16 @@ def cleanup_sessions():
         del sessions[k]
 
 # ── Auth middleware ────────────────────────────────────────────────────────────
-def check_auth():
-    """Returns None if authenticated, or a (response, status) tuple if not."""
+def get_session():
+    """Return the session dict for the current request, or None."""
     token = request.cookies.get("tools_session")
     if not token or token not in sessions:
+        return None
+    return sessions[token]
+
+def check_auth():
+    """Returns None if authenticated, or a (response, status) tuple if not."""
+    if get_session() is None:
         return jsonify({"error": "Unauthorized"}), 401
     return None
 
@@ -107,6 +112,47 @@ def list_folders():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ── PhotoPrism re-index helper ────────────────────────────────────────────────
+def trigger_photoprism_reindex(session_id, photos_dir):
+    """
+    Trigger a PhotoPrism re-index with rescan=true so that file types are
+    re-evaluated from disk. Returns a status dict for the SSE stream.
+
+    PhotoPrism's IndexOptions.Path is relative to the originals root, so we
+    strip the ORIGINALS_ROOT prefix before sending. An empty path means
+    "re-index everything".
+    """
+    if not session_id:
+        return {"ok": False, "error": "no PhotoPrism session id"}
+
+    # Normalize to a path relative to originals root.
+    try:
+        abs_photos = os.path.realpath(photos_dir)
+        abs_originals = os.path.realpath(ORIGINALS_ROOT)
+    except Exception as e:
+        return {"ok": False, "error": f"path normalize failed: {e}"}
+
+    if abs_photos == abs_originals:
+        rel_path = "/"
+    elif abs_photos.startswith(abs_originals + "/"):
+        rel_path = abs_photos[len(abs_originals):]  # leading slash preserved
+    else:
+        # Folder outside originals root — let PhotoPrism decide, send "/".
+        rel_path = "/"
+
+    try:
+        resp = http_requests.post(
+            f"{PHOTOPRISM_URL}/api/v1/index",
+            json={"path": rel_path, "rescan": True},
+            headers={"X-Session-ID": session_id},
+            timeout=30
+        )
+        if resp.status_code in (200, 201, 204):
+            return {"ok": True, "path": rel_path, "status": resp.status_code}
+        return {"ok": False, "error": f"HTTP {resp.status_code}: {resp.text[:200]}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 # ── Live Photo Convert — SSE stream ───────────────────────────────────────────
 @app.route("/api/livephoto/run")
 def livephoto_run():
@@ -116,6 +162,8 @@ def livephoto_run():
 
     photos_dir = request.args.get("photos_dir", ORIGINALS_ROOT)
     backup_dir = request.args.get("backup_dir", BACKUP_DIR)
+    session = get_session()
+    pp_session_id = session["photoprism_session_id"] if session else ""
 
     def generate():
         proc = subprocess.Popen(
@@ -125,11 +173,38 @@ def livephoto_run():
             text=True,
             bufsize=1
         )
+        saw_confirm = False
+        converted_total = 0
         for line in proc.stdout:
             line = line.strip()
-            if line:
-                yield f"data: {line}\n\n"
+            if not line:
+                continue
+            # Try to notice the confirm_backup summary so we know the run
+            # succeeded and we should trigger a re-index.
+            try:
+                parsed = json.loads(line)
+                if parsed.get("type") == "confirm_backup":
+                    saw_confirm = True
+                    converted_total = int(parsed.get("converted", 0))
+            except Exception:
+                pass
+            yield f"data: {line}\n\n"
         proc.wait()
+
+        # Trigger PhotoPrism re-index if anything was converted.
+        # Without this, PhotoPrism's DB still holds the old "Live" classification
+        # and the UI shows the file as Live even though it's now a plain JPEG.
+        if saw_confirm and converted_total > 0:
+            yield f"data: {json.dumps({'type': 'log', 'msg': 'Triggering PhotoPrism re-index...'})}\n\n"
+            result = trigger_photoprism_reindex(pp_session_id, photos_dir)
+            if result.get("ok"):
+                msg = f"PhotoPrism re-index started (path: {result.get('path', '/')})"
+                yield f"data: {json.dumps({'type': 'log', 'msg': msg})}\n\n"
+                yield f"data: {json.dumps({'type': 'reindex', 'ok': True, 'path': result.get('path', '/')})}\n\n"
+            else:
+                msg = f"Re-index failed: {result.get('error', 'unknown error')}. You may need to re-index manually in PhotoPrism → Library → Index."
+                yield f"data: {json.dumps({'type': 'log', 'msg': msg})}\n\n"
+                yield f"data: {json.dumps({'type': 'reindex', 'ok': False, 'error': result.get('error', '')})}\n\n"
 
     return Response(generate(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
@@ -150,6 +225,23 @@ def delete_backup():
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# ── Manual re-index endpoint ──────────────────────────────────────────────────
+@app.route("/api/reindex", methods=["POST"])
+def manual_reindex():
+    """Manually trigger a PhotoPrism re-index. Useful if the automatic one failed."""
+    auth = check_auth()
+    if auth:
+        return auth
+
+    data = request.get_json() or {}
+    photos_dir = data.get("photos_dir", ORIGINALS_ROOT)
+    session = get_session()
+    pp_session_id = session["photoprism_session_id"] if session else ""
+
+    result = trigger_photoprism_reindex(pp_session_id, photos_dir)
+    status = 200 if result.get("ok") else 502
+    return jsonify(result), status
 
 # ── Upload photos ─────────────────────────────────────────────────────────────
 @app.route("/api/upload", methods=["POST"])

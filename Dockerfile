@@ -3,6 +3,7 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libimage-exiftool-perl \
     zip \
+    unzip \
     imagemagick \
     ffmpeg \
     bash \

@@ -4,7 +4,15 @@
 # Called by server.py, output consumed via SSE
 #
 # Args: $1 = PHOTOS_DIR, $2 = BACKUP_DIR
-# JSON line types: progress, activity, log, summary, confirm_backup
+# JSON line types: progress, activity, log, summary, confirm_backup, error
+#
+# Samsung strategy:
+#   Samsung Motion Photos embed an MP4 inside the JPEG. PhotoPrism classifies
+#   a file as "Live" whenever it finds an MP4 `ftyp` atom at a non-zero byte
+#   offset (see pkg/media/video/probe.go in the PhotoPrism source). Stripping
+#   XMP/EXIF tags alone does NOT remove the embedded MP4 bytes, so PhotoPrism
+#   continues to classify the file as Live. To actually convert, we must
+#   truncate the file at the `ftyp` offset, then verify no `ftyp` remains.
 # =============================================================================
 
 set -euo pipefail
@@ -42,13 +50,33 @@ TOTAL_MOVS=$(find "$PHOTOS_DIR" -type f -iname "*.mov" | wc -l)
 emit "log" "Found ${TOTAL_JPGS} JPEGs and ${TOTAL_MOVS} MOVs to scan"
 
 # ── Scan Samsung ──────────────────────────────────────────────────────────────
+# A Samsung Motion Photo is any JPEG that contains an MP4 `ftyp` atom inside it.
+# We detect this by searching the raw file bytes, which mirrors what PhotoPrism
+# does. This catches ALL variants (appended MP4, MicroVideoOffset embedded,
+# etc.) regardless of whether the XMP tags are present or stripped.
 declare -a SAMSUNG_PHOTOS=()
 SCANNED=0
 
 if [[ "$TOTAL_JPGS" -gt 0 ]]; then
-  emit "log" "Scanning for Samsung Motion Photos..."
+  emit "log" "Scanning for Samsung Motion Photos (embedded MP4 detection)..."
   while IFS= read -r -d '' jpg; do
-    if exiftool -q -q -MicroVideo -MotionPhoto "$jpg" 2>/dev/null | grep -qiE "^(Micro Video|Motion Photo)\s*:\s*1"; then
+    # Ask Python to find an MP4 ftyp atom inside the JPEG.
+    # Exit 0 = found (is Motion Photo), 1 = not found, 2 = read error.
+    if python3 - "$jpg" <<'PYEOF' 2>/dev/null
+import sys
+try:
+    with open(sys.argv[1], 'rb') as f:
+        data = f.read()
+except Exception:
+    sys.exit(2)
+# The ftyp chunk sits 4 bytes into an MP4 box: [size:4][b'ftyp'][brand:4]...
+# A Samsung Motion Photo has ftyp at offset > 0 (past the JPEG body).
+idx = data.find(b'ftyp')
+if idx > 4 and idx + 8 <= len(data):
+    sys.exit(0)
+sys.exit(1)
+PYEOF
+    then
       SAMSUNG_PHOTOS+=("$jpg")
     fi
     ((SCANNED++)) || true
@@ -87,7 +115,7 @@ emit "log" "Apple Live Photos found: ${APPLE_COUNT}"
 TOTAL=$((SAMSUNG_COUNT + APPLE_COUNT))
 
 if [[ "$TOTAL" -eq 0 ]]; then
-  emit "summary" "{\"samsung\":0,\"apple\":0,\"converted\":0,\"failed\":0,\"backup_zip\":\"\"}"
+  echo "{\"type\":\"confirm_backup\",\"backup_zip\":\"\",\"backup_size\":\"\",\"samsung\":0,\"apple\":0,\"converted\":0,\"verified\":0,\"failed\":0,\"heic\":0}"
   exit 0
 fi
 
@@ -113,23 +141,111 @@ BACKUP_SIZE="$(du -sh "$BACKUP_ZIP" | cut -f1)"
 emit "log" "Backup created: $(basename "$BACKUP_ZIP") (${BACKUP_SIZE})"
 
 # ── Convert Samsung ───────────────────────────────────────────────────────────
-SAMSUNG_CONVERTED=0; SAMSUNG_FAILED=0
+# Truncate the file at the MP4 ftyp offset (or at the JPEG EOI marker 0xFFD9,
+# whichever comes first and is valid), then clean up orphan XMP tags, then
+# verify no ftyp remains. On verification failure, restore from backup.
+SAMSUNG_CONVERTED=0; SAMSUNG_VERIFIED=0; SAMSUNG_FAILED=0
 
 if [[ "$SAMSUNG_COUNT" -gt 0 ]]; then
-  emit "log" "Converting Samsung Motion Photos..."
+  emit "log" "Converting Samsung Motion Photos (truncate + verify)..."
   DONE=0
   for jpg in "${SAMSUNG_PHOTOS[@]}"; do
     fname="$(basename "$jpg")"
-    if exiftool -overwrite_original \
-        -MicroVideo= -MicroVideoOffset= -MicroVideoLength= \
-        -MicroVideoPresentationTimestampUs= \
-        -MotionPhoto= -MotionPhotoVersion= \
-        -MotionPhotoPresentationTimestampUs= \
-        -EmbeddedVideoType= -EmbeddedVideoFile= \
-        -q "$jpg" 2>/dev/null; then
+
+    # Phase 1: truncate the embedded MP4 from the file bytes.
+    truncated=0
+    if python3 - "$jpg" <<'PYEOF' 2>/dev/null
+import sys, os
+path = sys.argv[1]
+try:
+    with open(path, 'rb') as f:
+        data = f.read()
+except Exception:
+    sys.exit(2)
+
+# The most reliable cut point is the offset just before the MP4 ftyp box.
+ftyp_idx = data.find(b'ftyp')
+cut = ftyp_idx - 4 if ftyp_idx > 4 else -1
+
+# The byte immediately before the kept region must close the JPEG with FFD9.
+# If it does not, walk back to the nearest FFD9 and use that.
+if cut > 0:
+    kept = data[:cut]
+    if kept[-2:] != b'\xff\xd9':
+        alt = kept.rfind(b'\xff\xd9')
+        if alt < 0:
+            sys.exit(1)
+        cut = alt + 2
+
+# Fallback: no MP4 found. Use the last FFD9 in the file.
+if cut <= 0:
+    alt = data.rfind(b'\xff\xd9')
+    if alt < 0:
+        sys.exit(1)
+    cut = alt + 2
+
+if cut <= 0 or cut > len(data):
+    sys.exit(1)
+
+kept = data[:cut]
+if len(kept) < 4 or kept[-2:] != b'\xff\xd9':
+    sys.exit(1)
+
+# Write atomically.
+tmp = path + '.trunc.tmp'
+try:
+    with open(tmp, 'wb') as f:
+        f.write(kept)
+    os.replace(tmp, path)
+except Exception:
+    try: os.unlink(tmp)
+    except Exception: pass
+    sys.exit(2)
+sys.exit(0)
+PYEOF
+    then
+      truncated=1
+    fi
+
+    if [[ "$truncated" = "1" ]]; then
+      # Phase 2: clean up orphan XMP/EXIF tags (non-fatal if it fails).
+      exiftool -overwrite_original \
+          -MicroVideo= -MicroVideoOffset= -MicroVideoLength= \
+          -MicroVideoPresentationTimestampUs= \
+          -MotionPhoto= -MotionPhotoVersion= \
+          -MotionPhotoPresentationTimestampUs= \
+          -EmbeddedVideoType= -EmbeddedVideoFile= \
+          -q "$jpg" 2>/dev/null || true
+
       ((SAMSUNG_CONVERTED++)) || true
+
+      # Phase 3: verify no MP4 ftyp remains in the file.
+      if python3 - "$jpg" <<'PYEOF' 2>/dev/null
+import sys
+try:
+    with open(sys.argv[1], 'rb') as f:
+        data = f.read()
+except Exception:
+    sys.exit(2)
+if len(data) < 4 or data[-2:] != b'\xff\xd9':
+    sys.exit(1)
+idx = data.find(b'ftyp')
+if idx > 4:
+    sys.exit(1)
+sys.exit(0)
+PYEOF
+      then
+        ((SAMSUNG_VERIFIED++)) || true
+      else
+        # Verification failed: restore from backup zip.
+        rel="${jpg#$PHOTOS_DIR/}"
+        (cd "$PHOTOS_DIR" && unzip -o -q "$BACKUP_ZIP" "$rel") 2>/dev/null || true
+        ((SAMSUNG_FAILED++)) || true
+        emit "log" "Verify failed, restored: ${fname}"
+      fi
     else
       ((SAMSUNG_FAILED++)) || true
+      emit "log" "Truncate failed: ${fname}"
     fi
     ((DONE++)) || true
     emit_progress "$DONE" "$SAMSUNG_COUNT" "Stripping ${fname}"
@@ -171,6 +287,8 @@ fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 TOTAL_CONVERTED=$((SAMSUNG_CONVERTED + APPLE_CONVERTED))
+# Apple has no byte-level verify step — deleting the .mov is atomic.
+TOTAL_VERIFIED=$((SAMSUNG_VERIFIED + APPLE_CONVERTED))
 TOTAL_FAILED=$((SAMSUNG_FAILED + APPLE_FAILED))
 
-echo "{\"type\":\"confirm_backup\",\"backup_zip\":\"${BACKUP_ZIP}\",\"backup_size\":\"${BACKUP_SIZE}\",\"samsung\":${SAMSUNG_COUNT},\"apple\":${APPLE_COUNT},\"converted\":${TOTAL_CONVERTED},\"failed\":${TOTAL_FAILED},\"heic\":${HEIC_CONVERTED}}"
+echo "{\"type\":\"confirm_backup\",\"backup_zip\":\"${BACKUP_ZIP}\",\"backup_size\":\"${BACKUP_SIZE}\",\"samsung\":${SAMSUNG_COUNT},\"apple\":${APPLE_COUNT},\"converted\":${TOTAL_CONVERTED},\"verified\":${TOTAL_VERIFIED},\"failed\":${TOTAL_FAILED},\"heic\":${HEIC_CONVERTED}}"

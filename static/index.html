@@ -363,35 +363,70 @@ function showPage(name) {
 }
 
 // ── Folder browser ────────────────────────────────────────────────────────────
-async function browseFolders(inputId) {
+async function browseFolders(inputId, browsePath) {
   const input = document.getElementById(inputId);
   const dropdown = document.getElementById(inputId + '-dropdown');
-  const path = input.value || '/photoprism/originals';
+  const path = browsePath || input.value || '/photoprism/originals';
 
   const res = await fetch('/api/folders?path=' + encodeURIComponent(path));
   if (res.status === 401) { doLogout(); return; }
   const data = await res.json();
 
   dropdown.innerHTML = '';
+
+  // Current path display
+  const header = document.createElement('div');
+  header.className = 'folder-dropdown-item';
+  header.style.cssText = 'font-size:11px;color:var(--cyan);border-bottom:1px solid var(--border);padding:8px 14px;';
+  header.textContent = path;
+  header.onclick = () => { input.value = path; dropdown.style.display = 'none'; };
+  dropdown.appendChild(header);
+
+  // Go up option (unless at root)
+  if (path !== '/photoprism/originals') {
+    const parent = path.substring(0, path.lastIndexOf('/')) || '/photoprism/originals';
+    const upItem = document.createElement('div');
+    upItem.className = 'folder-dropdown-item';
+    upItem.style.color = 'var(--amber)';
+    upItem.textContent = '↑ ..';
+    upItem.onclick = (e) => { e.stopPropagation(); browseFolders(inputId, parent); };
+    dropdown.appendChild(upItem);
+  }
+
   if (data.folders && data.folders.length > 0) {
     data.folders.forEach(f => {
       const item = document.createElement('div');
       item.className = 'folder-dropdown-item';
-      item.textContent = f.name;
-      item.onclick = () => { input.value = f.path; dropdown.style.display = 'none'; };
+      item.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = f.name;
+      nameSpan.style.cursor = 'pointer';
+      nameSpan.onclick = () => { input.value = f.path; dropdown.style.display = 'none'; };
+      const drillBtn = document.createElement('span');
+      drillBtn.textContent = '→';
+      drillBtn.style.cssText = 'color:var(--accent);cursor:pointer;padding:0 4px;';
+      drillBtn.onclick = (e) => { e.stopPropagation(); browseFolders(inputId, f.path); };
+      item.appendChild(nameSpan);
+      item.appendChild(drillBtn);
       dropdown.appendChild(item);
     });
   } else {
-    dropdown.innerHTML = '<div class="folder-dropdown-item" style="color:var(--muted)">No subfolders</div>';
+    const empty = document.createElement('div');
+    empty.className = 'folder-dropdown-item';
+    empty.style.color = 'var(--muted)';
+    empty.textContent = 'No subfolders';
+    dropdown.appendChild(empty);
   }
 
   dropdown.style.display = 'block';
-  document.addEventListener('click', function hide(e) {
-    if (!dropdown.contains(e.target) && e.target !== input) {
+  document.removeEventListener('click', dropdown._hideHandler);
+  dropdown._hideHandler = function hide(e) {
+    if (!dropdown.contains(e.target) && e.target !== input && !e.target.closest('.btn-secondary')) {
       dropdown.style.display = 'none';
       document.removeEventListener('click', hide);
     }
-  });
+  };
+  setTimeout(() => document.addEventListener('click', dropdown._hideHandler), 0);
 }
 
 // ── Live Photo Convert ────────────────────────────────────────────────────────
@@ -450,7 +485,12 @@ function runLivePhoto() {
     }
   };
 
-  es.onerror = () => { addLog('Connection error', 'err'); es.close(); };
+  es.onerror = () => {
+    if (document.getElementById('lp-confirm-section').style.display === 'none') {
+      addLog('Connection lost — stream ended unexpectedly', 'err');
+    }
+    es.close();
+  };
 }
 
 async function deleteBackup() {

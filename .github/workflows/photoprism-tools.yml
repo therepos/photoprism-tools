@@ -2,8 +2,7 @@ name: photoprism-tools
 
 on:
   push:
-    paths:
-      - "apps/tools/photoprism-tools/**"
+    branches: ["main"]
   workflow_dispatch:
 
 env:
@@ -40,7 +39,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: apps/tools/photoprism-tools
+          context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

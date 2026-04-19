@@ -130,6 +130,182 @@
   body.logged-in #app-sidebar, body.logged-in #app-main { display: flex; }
   body.logged-in #app-main { display: block; }
   body.logged-in .login-overlay { display: none; }
+
+  /* ── Mobile topbar (hidden on desktop) ── */
+  #mobile-topbar { display: none; }
+  #sidebar-backdrop { display: none; }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     Mobile (<= 768px)
+     - Sidebar becomes a slide-in drawer triggered by hamburger
+     - Main content gets full width with smaller padding
+     - Form rows stack vertically (input above button)
+     - Stat grid becomes 2 columns
+     - Login box becomes fluid width
+     ═══════════════════════════════════════════════════════════════════════ */
+  @media (max-width: 768px) {
+    body { font-size: 15px; }
+
+    /* Topbar with hamburger + app title */
+    body.logged-in #mobile-topbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      flex-shrink: 0;
+    }
+    #mobile-topbar .hamburger {
+      background: none;
+      border: none;
+      color: var(--text);
+      cursor: pointer;
+      padding: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #mobile-topbar .topbar-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    /* Body: stack topbar + main vertically */
+    body.logged-in {
+      flex-direction: column;
+      height: 100dvh;          /* dvh handles mobile browser chrome */
+    }
+
+    /* Sidebar: absolute-positioned drawer, hidden by default */
+    aside {
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: 260px;
+      max-width: 80vw;
+      z-index: 200;
+      transform: translateX(-100%);
+      transition: transform 0.22s ease;
+      box-shadow: 0 0 30px rgba(0,0,0,0.6);
+    }
+    body.logged-in #app-sidebar { display: flex; }    /* restore flex layout */
+    body.logged-in #app-sidebar.open { transform: translateX(0); }
+
+    /* Backdrop shown when drawer is open */
+    body.logged-in #sidebar-backdrop {
+      display: block;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 150;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.22s ease;
+    }
+    body.logged-in #sidebar-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* Main content: full width, tighter padding */
+    main { padding: 18px 14px; }
+
+    /* Typography */
+    h2 { font-size: 17px; }
+    .subtitle { font-size: 13px; margin-bottom: 18px; }
+
+    /* Cards: less padding to save horizontal space */
+    .card { padding: 16px; border-radius: 8px; }
+
+    /* Form rows: stack input + Browse button vertically */
+    .folder-input {
+      flex-direction: column;
+      gap: 8px;
+    }
+    .folder-input .btn {
+      width: 100%;
+    }
+    input[type=text] {
+      font-size: 16px;        /* 16px prevents iOS zoom-on-focus */
+      padding: 11px 12px;
+    }
+
+    /* Buttons: larger tap targets, full-width for primary actions */
+    .btn {
+      padding: 12px 18px;
+      font-size: 14px;
+      min-height: 44px;
+    }
+    #lp-run-section .btn,
+    #ul-actions .btn {
+      width: 100%;
+    }
+
+    /* Stat grid: 2 columns on mobile (4 stats -> 2x2) */
+    .summary-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .stat-n { font-size: 22px; }
+
+    /* Confirm actions: stack buttons */
+    .confirm-actions {
+      flex-direction: column;
+    }
+    .confirm-actions .btn {
+      width: 100%;
+    }
+
+    /* Folder dropdown: fill container width instead of fixed 340px */
+    .folder-dropdown {
+      width: 100%;
+      left: 0;
+      right: 0;
+      max-height: 260px;
+    }
+    .folder-dropdown-item {
+      padding: 12px 14px;    /* bigger tap target */
+    }
+
+    /* Login box: fluid with margin */
+    .login-box {
+      width: auto;
+      max-width: 360px;
+      margin: 20px;
+      padding: 24px;
+    }
+    .login-box input { font-size: 16px; }
+
+    /* Drop zone: slightly smaller on mobile */
+    .drop-zone { padding: 28px 16px; }
+    .drop-icon { font-size: 28px; }
+
+    /* File list items: allow name to take more width */
+    .file-item-name { max-width: 60%; }
+
+    /* Log: keep readable */
+    .log { font-size: 11px; line-height: 1.7; max-height: 200px; }
+
+    /* Progress activity text: don't ellipsis-truncate on mobile (people
+       like seeing the actual filename being processed) */
+    .activity { white-space: normal; word-break: break-all; min-height: auto; }
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     Very small phones (<= 380px)
+     ═══════════════════════════════════════════════════════════════════════ */
+  @media (max-width: 380px) {
+    main { padding: 14px 10px; }
+    .card { padding: 14px; }
+    .summary-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat-card { padding: 10px; }
+    .stat-n { font-size: 20px; }
+  }
 </style>
 </head>
 <body>
@@ -147,6 +323,17 @@
     <button class="login-btn" id="login-btn" onclick="doLogin()">Sign in</button>
   </div>
 </div>
+
+<!-- ── Mobile Topbar (only visible on narrow screens) ── -->
+<header id="mobile-topbar">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Open menu">
+    <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+  </button>
+  <span class="topbar-title">PhotoPrism Tools</span>
+</header>
+
+<!-- ── Sidebar backdrop (mobile only) ── -->
+<div id="sidebar-backdrop" onclick="closeSidebar()"></div>
 
 <!-- ── Sidebar ── -->
 <aside id="app-sidebar">
@@ -361,6 +548,17 @@ function showPage(name) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
   event.currentTarget.classList.add('active');
+  closeSidebar();  // mobile: auto-close drawer after picking a page
+}
+
+// ── Mobile sidebar drawer ─────────────────────────────────────────────────────
+function toggleSidebar() {
+  const open = document.getElementById('app-sidebar').classList.toggle('open');
+  document.getElementById('sidebar-backdrop').classList.toggle('open', open);
+}
+function closeSidebar() {
+  document.getElementById('app-sidebar').classList.remove('open');
+  document.getElementById('sidebar-backdrop').classList.remove('open');
 }
 
 // ── Folder browser ────────────────────────────────────────────────────────────

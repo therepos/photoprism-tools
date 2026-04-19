@@ -14,9 +14,9 @@ RUN pip3 install flask requests --break-system-packages
 
 WORKDIR /app
 
-COPY web/server.py ./server.py
-COPY web/static ./static
-COPY tools /tools
+COPY app/server.py ./server.py
+COPY static ./static
+COPY scripts /tools
 RUN chmod +x /tools/*.sh
 
 ENV ORIGINALS_ROOT=/photoprism/originals \

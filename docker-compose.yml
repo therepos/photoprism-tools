@@ -10,7 +10,7 @@ services:
     environment:
       ORIGINALS_ROOT: "/photoprism/originals"
       BACKUP_DIR: "/photoprism/originals/.photoprism-tools-backup"
-      PHOTOPRISM_URL: "http://192.168.1.111:3013"
+      PHOTOPRISM_URL: "http://192.168.1.111:3013"                      # this connects the tool to the existing photoprism instance
     security_opt:
       - apparmor=unconfined
       - seccomp=unconfined

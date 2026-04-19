@@ -1,0 +1,58 @@
+/* ═══════════════════════════════════════════════════════════════
+   Praxis Design System — Global Styles
+   Single source of truth for all tokens and resets.
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --px-bg: #F5F5F7;
+  --px-white: #FFFFFF;
+  --px-surface2: #F9F9FB;
+  --px-border: #E5E5EA;
+  --px-border2: #D1D1D6;
+
+  --px-text: #1D1D1F;
+  --px-text2: #48484A;
+  --px-text3: #86868B;
+  --px-text4: #AEAEB2;
+
+  --px-accent: #0071E3;
+  --px-accent-soft: rgba(0,113,227,0.06);
+  --px-green: #34C759;
+  --px-green-dk: #248A3D;
+  --px-green-soft: rgba(52,199,89,0.08);
+  --px-red: #FF3B30;
+  --px-red-soft: rgba(255,59,48,0.08);
+  --px-orange: #FF9500;
+  --px-orange-soft: rgba(255,149,0,0.08);
+  --px-purple: #AF52DE;
+  --px-purple-soft: rgba(175,82,222,0.07);
+
+  --px-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03);
+  --px-shadow-hover: 0 2px 8px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.05);
+  --px-radius: 12px;
+  --px-radius-sm: 8px;
+
+  --px-font: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --px-mono: 'SF Mono', 'Menlo', 'Consolas', monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--px-font);
+  background: var(--px-bg);
+  color: var(--px-text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-size: 14px;
+}
+
+input, select, button, textarea { font-family: var(--px-font); }
+input[type=number] { -moz-appearance: textfield; }
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+::selection { background: rgba(0,113,227,0.15); }

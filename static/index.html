@@ -397,14 +397,16 @@ async function browseFolders(inputId, browsePath) {
     data.folders.forEach(f => {
       const item = document.createElement('div');
       item.className = 'folder-dropdown-item';
-      item.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
+      item.style.cssText = 'display:flex;justify-content:space-between;align-items:center;user-select:none;cursor:pointer;';
+      item.onclick = () => { input.value = f.path; dropdown.style.display = 'none'; };
       const nameSpan = document.createElement('span');
       nameSpan.textContent = f.name;
-      nameSpan.style.cursor = 'pointer';
-      nameSpan.onclick = () => { input.value = f.path; dropdown.style.display = 'none'; };
+      nameSpan.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;';
       const drillBtn = document.createElement('span');
       drillBtn.textContent = '→';
-      drillBtn.style.cssText = 'color:var(--accent);cursor:pointer;padding:0 4px;';
+      drillBtn.style.cssText = 'color:var(--accent);cursor:pointer;padding:2px 8px;margin-left:8px;border-radius:4px;';
+      drillBtn.onmouseenter = () => { drillBtn.style.background = 'var(--surface2)'; };
+      drillBtn.onmouseleave = () => { drillBtn.style.background = 'none'; };
       drillBtn.onclick = (e) => { e.stopPropagation(); browseFolders(inputId, f.path); };
       item.appendChild(nameSpan);
       item.appendChild(drillBtn);

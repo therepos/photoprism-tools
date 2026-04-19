@@ -1,3 +1,4 @@
+services:
   photoprism-tools:
     image: ghcr.io/therepos/photoprism-tools:latest
     container_name: photoprism-tools

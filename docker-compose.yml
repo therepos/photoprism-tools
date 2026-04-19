@@ -1,0 +1,16 @@
+services:
+  photoprism-tools:
+    image: ghcr.io/therepos/photoprism-tools:latest
+    container_name: photoprism-tools
+    restart: unless-stopped
+    ports:
+      - "3014:8088"
+    volumes:
+      - "/mnt/sec/media/photos:/photoprism/originals"
+    environment:
+      ORIGINALS_ROOT: "/photoprism/originals"
+      BACKUP_DIR: "/photoprism/originals/.photoprism-tools-backup"
+      PHOTOPRISM_URL: "http://your-host-ip:3013"
+    security_opt:
+      - apparmor=unconfined
+      - seccomp=unconfined
